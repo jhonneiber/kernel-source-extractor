@@ -1,0 +1,44 @@
+name: Kernel Decompiler Pro
+on:
+  workflow_dispatch: # Esto te permite darle al botón "Run" manualmente
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk-headless python3-pip
+          pip install git+https://github.com/clubby789/vmlinux-to-elf.git
+
+      - name: Descargar Ghidra
+        run: |
+          wget -q -O ghidra.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.0.1_build/ghidra_11.0.1_PUBLIC_20240130.zip
+          unzip -q ghidra.zip
+
+      - name: Generar ELF con Símbolos
+        run: |
+          vmlinux-to-elf kernel kernel_con_simbolos.elf
+
+      - name: Descompilación Masiva con Ghidra
+        run: |
+          chmod +x ./ghidra_11.0.1_PUBLIC/support/analyzeHeadless
+          ./ghidra_11.0.1_PUBLIC/support/analyzeHeadless . ProyectoInfinix \
+          -import kernel_con_simbolos.elf \
+          -scriptPath ./ \
+          -postScript Decompile.py \
+          -deleteProject
+
+      - name: Comprimir Resultados
+        run: |
+          zip -r kernel_source_c.zip Kernel_Source_Rebuilt/
+
+      - name: Subir Código Final
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-C-Source
+          path: kernel_source_c.zip
