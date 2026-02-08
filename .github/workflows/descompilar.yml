@@ -17,16 +17,13 @@ jobs:
 
       - name: 🕵️ Detectar y Renombrar Kernel
         run: |
-          # Buscar el archivo más grande en la carpeta (El kernel suele ser > 5MB)
-          # Excluimos .git y scripts .py
           echo "Buscando el archivo del kernel..."
-          
-          # Encuentra el archivo más grande (excluyendo el propio script .py)
+          # Encuentra el archivo más grande (excluyendo scripts .py y .yml)
           KERNEL_DETECTADO=$(find . -maxdepth 1 -type f -not -name "*.py" -not -name "*.yml" -printf "%s\t%p\n" | sort -n | tail -1 | awk '{print $2}')
           
           echo "✅ Archivo detectado como Kernel: $KERNEL_DETECTADO"
           
-          # Renombrar a kernel_bin para que el resto del script funcione
+          # Renombrar a kernel_bin
           mv "$KERNEL_DETECTADO" kernel_bin
 
       - name: Instalar Herramientas
@@ -38,8 +35,6 @@ jobs:
       - name: Convertir Binario a ELF
         run: |
           echo "Intentando recuperar símbolos de: kernel_bin"
-          
-          # Intentar conversión
           vmlinux-to-elf kernel_bin kernel_estructurado.elf || true
           
           if [ -f "kernel_estructurado.elf" ]; then
@@ -57,20 +52,23 @@ jobs:
 
       - name: Ejecutar Análisis de Ghidra
         run: |
-          mkdir output_code
+          mkdir -p output_code
           
-          # Verificar si existe el script de python antes de correr
+          # Verificar si existe el script de python
           if [ ! -f "Decompile.py" ]; then
             echo "❌ ERROR: No se encuentra Decompile.py en el repositorio."
             exit 1
           fi
 
+          # --- CONFIGURACIÓN DE MEMORIA SEGURA ---
+          export _JAVA_OPTIONS="-Xmx6G"
+
+          # Ejecutar Ghidra sin argumentos extraños al final
           ./ghidra_11.0.1_PUBLIC/support/analyzeHeadless . ProyectoKernel \
           -import kernel_estructurado.elf \
           -processor ARM64:LE:64:v8a \
           -scriptPath . \
-          -postScript Decompile.py \
-          -J-Xmx7G 
+          -postScript Decompile.py
 
       - name: Subir Código Reconstruido
         uses: actions/upload-artifact@v4
