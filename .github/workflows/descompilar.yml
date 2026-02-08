@@ -1,6 +1,6 @@
-name: Kernel Decompiler Directo
+name: Kernel Decompiler (Auto-Detect)
 on:
-  workflow_dispatch: # Botón manual
+  workflow_dispatch:
 
 jobs:
   decompile:
@@ -9,25 +9,44 @@ jobs:
       - name: Checkout del código
         uses: actions/checkout@v4
 
+      - name: 📂 Ver qué archivos hay (Depuración)
+        run: |
+          echo "--- LISTA DE ARCHIVOS EN EL REPO ---"
+          ls -lh
+          echo "------------------------------------"
+
+      - name: 🕵️ Detectar y Renombrar Kernel
+        run: |
+          # Buscar el archivo más grande en la carpeta (El kernel suele ser > 5MB)
+          # Excluimos .git y scripts .py
+          echo "Buscando el archivo del kernel..."
+          
+          # Encuentra el archivo más grande (excluyendo el propio script .py)
+          KERNEL_DETECTADO=$(find . -maxdepth 1 -type f -not -name "*.py" -not -name "*.yml" -printf "%s\t%p\n" | sort -n | tail -1 | awk '{print $2}')
+          
+          echo "✅ Archivo detectado como Kernel: $KERNEL_DETECTADO"
+          
+          # Renombrar a kernel_bin para que el resto del script funcione
+          mv "$KERNEL_DETECTADO" kernel_bin
+
       - name: Instalar Herramientas
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jdk-headless python3-pip unzip wget
-          # Herramienta vital para recuperar nombres de funciones
           pip install vmlinux-to-elf
 
-      - name: Convertir Binario a ELF (Recuperar Símbolos)
+      - name: Convertir Binario a ELF
         run: |
-          echo "Recuperando tabla de símbolos del kernel..."
-          # Convierte tu archivo 'kernel_bin' en un ELF estructurado
-          vmlinux-to-elf kernel_bin kernel_estructurado.elf
+          echo "Intentando recuperar símbolos de: kernel_bin"
           
-          if [ ! -f "kernel_estructurado.elf" ]; then
-             echo "⚠️ vmlinux-to-elf falló o el kernel está encriptado."
-             echo "Usando binario crudo (Ghidra intentará adivinar)."
-             cp kernel_bin kernel_estructurado.elf
+          # Intentar conversión
+          vmlinux-to-elf kernel_bin kernel_estructurado.elf || true
+          
+          if [ -f "kernel_estructurado.elf" ]; then
+             echo "✅ Éxito: Símbolos recuperados."
           else
-             echo "✅ Estructura ELF recuperada con éxito."
+             echo "⚠️ Advertencia: vmlinux-to-elf falló. Usando modo binario crudo."
+             cp kernel_bin kernel_estructurado.elf
           fi
 
       - name: Instalar Ghidra
@@ -37,9 +56,15 @@ jobs:
           chmod +x ghidra_11.0.1_PUBLIC/support/analyzeHeadless
 
       - name: Ejecutar Análisis de Ghidra
-        # Asignamos 7GB de RAM porque analizar el kernel directo consume mucho
         run: |
           mkdir output_code
+          
+          # Verificar si existe el script de python antes de correr
+          if [ ! -f "Decompile.py" ]; then
+            echo "❌ ERROR: No se encuentra Decompile.py en el repositorio."
+            exit 1
+          fi
+
           ./ghidra_11.0.1_PUBLIC/support/analyzeHeadless . ProyectoKernel \
           -import kernel_estructurado.elf \
           -processor ARM64:LE:64:v8a \
