@@ -1,10 +1,6 @@
-name: Kernel Decompiler Pro
+name: Kernel Decompiler Directo
 on:
-  workflow_dispatch:
-    inputs:
-      kernel_url:
-        description: 'URL directa al boot.img (Opcional)'
-        required: false
+  workflow_dispatch: # Botón manual
 
 jobs:
   decompile:
@@ -17,36 +13,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jdk-headless python3-pip unzip wget
-          # Herramienta para extraer boot.img
+          # Herramienta vital para recuperar nombres de funciones
           pip install vmlinux-to-elf
-          # Herramienta para descomprimir boot.img (Android Image Kitchen o similar)
-          wget https://raw.githubusercontent.com/osm0sis/mkbootimg/master/unpackbootimg -O unpackbootimg
-          chmod +x unpackbootimg
-
-      - name: Obtener Kernel (boot.img)
-        run: |
-          # Si subiste el archivo al repo, úsalo. Si no, descárgalo.
-          if [ -f "boot.img" ]; then
-            echo "Usando boot.img del repositorio."
-          else
-            echo "No hay boot.img, intentando descargar..."
-            wget ${{ github.event.inputs.kernel_url }} -O boot.img
-          fi
-          
-          # Extraer el kernel del boot.img
-          ./unpackbootimg -i boot.img -o .
-          # Normalmente el archivo extraído se llama boot.img-kernel o boot.img-zImage
-          mv boot.img-kernel kernel_bin || mv boot.img-zImage kernel_bin || echo "Error encontrando el binario del kernel"
 
       - name: Convertir Binario a ELF (Recuperar Símbolos)
         run: |
-          echo "Intentando recuperar símbolos..."
-          # Esto es crucial para que Ghidra entienda los nombres de las funciones
+          echo "Recuperando tabla de símbolos del kernel..."
+          # Convierte tu archivo 'kernel_bin' en un ELF estructurado
           vmlinux-to-elf kernel_bin kernel_estructurado.elf
           
           if [ ! -f "kernel_estructurado.elf" ]; then
-             echo "Fallo vmlinux-to-elf, usando binario crudo (Poca probabilidad de éxito)"
+             echo "⚠️ vmlinux-to-elf falló o el kernel está encriptado."
+             echo "Usando binario crudo (Ghidra intentará adivinar)."
              cp kernel_bin kernel_estructurado.elf
+          else
+             echo "✅ Estructura ELF recuperada con éxito."
           fi
 
       - name: Instalar Ghidra
@@ -56,7 +37,7 @@ jobs:
           chmod +x ghidra_11.0.1_PUBLIC/support/analyzeHeadless
 
       - name: Ejecutar Análisis de Ghidra
-        # Aumentamos memoria Java a 4GB o 6GB porque los kernels son pesados
+        # Asignamos 7GB de RAM porque analizar el kernel directo consume mucho
         run: |
           mkdir output_code
           ./ghidra_11.0.1_PUBLIC/support/analyzeHeadless . ProyectoKernel \
@@ -64,7 +45,7 @@ jobs:
           -processor ARM64:LE:64:v8a \
           -scriptPath . \
           -postScript Decompile.py \
-          -J-Xmx6G 
+          -J-Xmx7G 
 
       - name: Subir Código Reconstruido
         uses: actions/upload-artifact@v4
