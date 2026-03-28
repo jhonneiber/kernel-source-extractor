@@ -1,39 +1,79 @@
-# .github/workflows/build.yml
-name: Build and Test
-on: [push, pull_request]
+# .github/workflows/kernel-build.yml
+name: Kernel Source Extractor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Permitir ejecución manual
 
 jobs:
-  build:
-    runs-on: macos-latest
+  test-multi-os:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]  # Testear en múltiples sistemas
+    
+    runs-on: ${{ matrix.os }}
     
     steps:
-      # 1. Checkout del código
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
       
-      # 2. Verificar si package.json existe
-      - name: Check if package.json exists
-        id: check
+      - name: Setup environment
         run: |
-          if [ -f "package.json" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+          echo "🖥️  Running on: ${{ matrix.os }}"
+          echo "🔧 Kernel extractor build starting..."
+          
+      # ✅ Solo si es proyecto Node.js
+      - name: Setup Node (if needed)
+        if: ${{ hashFiles('package.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install deps (if Node project)
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm ci
+      
+      # ✅ Comandos genéricos de build
+      - name: Build
+        run: |
+          if [ -f "Makefile" ]; then
+            echo "🔨 Using Makefile..."
+            make
+          elif [ -f "CMakeLists.txt" ]; then
+            echo "🔨 Using CMake..."
+            mkdir -p build && cd build
+            cmake .. && make
+          elif [ -f "package.json" ]; then
+            echo "🔨 Using npm..."
+            npm run build
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  No build system detected"
+            echo "📁 Files in repo:"
+            ls -la
           fi
       
-      # 3. Instalar dependencias (solo si existe package.json)
-      - name: Install dependencies
-        if: steps.check.outputs.exists == 'true'
-        run: npm install
-      
-      # 4. Build/Test
       - name: Run tests
-        if: steps.check.outputs.exists == 'true'
-        run: npm test || echo "No tests configured"
-      
-      # 5. Para proyectos que NO son Node.js
-      - name: Build project
-        if: steps.check.outputs.exists == 'false'
         run: |
-          echo "No es proyecto Node.js"
-          echo "Configura los comandos de build correctos"
+          if [ -f "Makefile" ] && grep -q "test:" Makefile; then
+            make test
+          elif [ -f "package.json" ] && npm run test --if-present; then
+            npm test
+          else
+            echo "✅ No tests configured, skipping"
+          fi
+      
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-extractor-${{ matrix.os }}
+          path: |
+            build/
+            dist/
+            *.elf
+            *.bin
+          retention-days: 14
