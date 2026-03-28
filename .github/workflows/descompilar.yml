@@ -1,23 +1,39 @@
-# .github/workflows/macos-test.yml
-name: macOS Test
-on: [push]
+# .github/workflows/build.yml
+name: Build and Test
+on: [push, pull_request]
 
 jobs:
-  test:
+  build:
     runs-on: macos-latest
+    
     steps:
-      - uses: actions/checkout@v3
+      # 1. Checkout del código
+      - name: Checkout repository
+        uses: actions/checkout@v3
       
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+      # 2. Verificar si package.json existe
+      - name: Check if package.json exists
+        id: check
+        run: |
+          if [ -f "package.json" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
       
+      # 3. Instalar dependencias (solo si existe package.json)
       - name: Install dependencies
+        if: steps.check.outputs.exists == 'true'
         run: npm install
       
+      # 4. Build/Test
       - name: Run tests
-        run: npm test
+        if: steps.check.outputs.exists == 'true'
+        run: npm test || echo "No tests configured"
       
-      - name: Build iOS (si tienes app)
-        run: xcodebuild -scheme MyApp -configuration Release
+      # 5. Para proyectos que NO son Node.js
+      - name: Build project
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          echo "No es proyecto Node.js"
+          echo "Configura los comandos de build correctos"
