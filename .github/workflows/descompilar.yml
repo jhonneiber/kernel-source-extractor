@@ -1,77 +1,23 @@
-name: Kernel Decompiler (Auto-Detect)
-on:
-  workflow_dispatch:
+# .github/workflows/macos-test.yml
+name: macOS Test
+on: [push]
 
 jobs:
-  decompile:
-    runs-on: ubuntu-latest
+  test:
+    runs-on: macos-latest
     steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
-
-      - name: 📂 Ver qué archivos hay (Depuración)
-        run: |
-          echo "--- LISTA DE ARCHIVOS EN EL REPO ---"
-          ls -lh
-          echo "------------------------------------"
-
-      - name: 🕵️ Detectar y Renombrar Kernel
-        run: |
-          echo "Buscando el archivo del kernel..."
-          # Encuentra el archivo más grande (excluyendo scripts .py y .yml)
-          KERNEL_DETECTADO=$(find . -maxdepth 1 -type f -not -name "*.py" -not -name "*.yml" -printf "%s\t%p\n" | sort -n | tail -1 | awk '{print $2}')
-          
-          echo "✅ Archivo detectado como Kernel: $KERNEL_DETECTADO"
-          
-          # Renombrar a kernel_bin
-          mv "$KERNEL_DETECTADO" kernel_bin
-
-      - name: Instalar Herramientas
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y openjdk-17-jdk-headless python3-pip unzip wget
-          pip install vmlinux-to-elf
-
-      - name: Convertir Binario a ELF
-        run: |
-          echo "Intentando recuperar símbolos de: kernel_bin"
-          vmlinux-to-elf kernel_bin kernel_estructurado.elf || true
-          
-          if [ -f "kernel_estructurado.elf" ]; then
-             echo "✅ Éxito: Símbolos recuperados."
-          else
-             echo "⚠️ Advertencia: vmlinux-to-elf falló. Usando modo binario crudo."
-             cp kernel_bin kernel_estructurado.elf
-          fi
-
-      - name: Instalar Ghidra
-        run: |
-          wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.0.1_build/ghidra_11.0.1_PUBLIC_20240130.zip
-          unzip -q ghidra_11.0.1_PUBLIC_20240130.zip
-          chmod +x ghidra_11.0.1_PUBLIC/support/analyzeHeadless
-
-      - name: Ejecutar Análisis de Ghidra
-        run: |
-          mkdir -p output_code
-          
-          # Verificar si existe el script de python
-          if [ ! -f "Decompile.py" ]; then
-            echo "❌ ERROR: No se encuentra Decompile.py en el repositorio."
-            exit 1
-          fi
-
-          # --- CONFIGURACIÓN DE MEMORIA SEGURA ---
-          export _JAVA_OPTIONS="-Xmx6G"
-
-          # Ejecutar Ghidra sin argumentos extraños al final
-          ./ghidra_11.0.1_PUBLIC/support/analyzeHeadless . ProyectoKernel \
-          -import kernel_estructurado.elf \
-          -processor ARM64:LE:64:v8a \
-          -scriptPath . \
-          -postScript Decompile.py
-
-      - name: Subir Código Reconstruido
-        uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node
+        uses: actions/setup-node@v3
         with:
-          name: Kernel_Source_Dump
-          path: output_code/
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Build iOS (si tienes app)
+        run: xcodebuild -scheme MyApp -configuration Release
