@@ -1,79 +1,26 @@
-# .github/workflows/kernel-build.yml
-name: Kernel Source Extractor
+name: RemoteDesktop_Auto
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:  # Permitir ejecución manual
+on: 
+  workflow_dispatch: # Ahora solo le das al botón verde y listo
 
 jobs:
-  test-multi-os:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]  # Testear en múltiples sistemas
-    
-    runs-on: ${{ matrix.os }}
-    
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Setup environment
+      - name: Instalando Escritorio y Herramientas
         run: |
-          echo "🖥️  Running on: ${{ matrix.os }}"
-          echo "🔧 Kernel extractor build starting..."
+          sudo apt update
+          sudo apt install -y xfce4 xfce4-terminal chrome-remote-desktop
+      
+      - name: Iniciando Acceso Remoto Automático
+        run: |
+          DISPLAY= /opt/google/chrome-remote-desktop/start-host \
+          --code="${{ secrets.CHROME_REMOTE_DESKTOP_CODE }}" \
+          --redirect-url="https://remotedesktop.google.com/_/oauthredirect" \
+          --name=$(hostname) \
+          --pin=123456
           
-      # ✅ Solo si es proyecto Node.js
-      - name: Setup Node (if needed)
-        if: ${{ hashFiles('package.json') != '' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Install deps (if Node project)
-        if: ${{ hashFiles('package.json') != '' }}
-        run: npm ci
-      
-      # ✅ Comandos genéricos de build
-      - name: Build
+      - name: Mantener activo
         run: |
-          if [ -f "Makefile" ]; then
-            echo "🔨 Using Makefile..."
-            make
-          elif [ -f "CMakeLists.txt" ]; then
-            echo "🔨 Using CMake..."
-            mkdir -p build && cd build
-            cmake .. && make
-          elif [ -f "package.json" ]; then
-            echo "🔨 Using npm..."
-            npm run build
-          else
-            echo "⚠️  No build system detected"
-            echo "📁 Files in repo:"
-            ls -la
-          fi
-      
-      - name: Run tests
-        run: |
-          if [ -f "Makefile" ] && grep -q "test:" Makefile; then
-            make test
-          elif [ -f "package.json" ] && npm run test --if-present; then
-            npm test
-          else
-            echo "✅ No tests configured, skipping"
-          fi
-      
-      - name: Upload build artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-extractor-${{ matrix.os }}
-          path: |
-            build/
-            dist/
-            *.elf
-            *.bin
-          retention-days: 14
+          echo "Conexión establecida. Entra en remotedesktop.google.com/access"
+          sleep 6h
